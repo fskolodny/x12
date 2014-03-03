@@ -8,7 +8,7 @@
 (defvar f #\*)
 (defclass paired ()
   (
-   (pairs :accessor pairs :initarg :pairs :initform nil)
+   (children :accessor children :initarg :children :initform nil)
    (transmittal-id :accessor transmittal-id :initform "")
    (trailer-code :accessor trailer-code :allocation :class)
    (header-code :accessor header-code :allocation :class)
@@ -20,7 +20,13 @@
   (
    (trailer-code :initform "SE")
    (header-code :initform "ST")
+   (transmittal-type :accessor transmittal-type :allocation :class)
    (transmittal-id-position :initform 2)
+   )
+  )
+(defclass _270 (st/se)
+  (
+   (transmittal-type :initform "270")
    )
   )
 (defclass gs/ge (paired)
@@ -35,6 +41,7 @@
    (record-delimiter :accessor record-delimiter :initarg :record-delimiter :initform #\~)
    (field-delimiter :accessor field-delimiter :initarg :field-delimiter :initform #\*)
    (subfield-delimiter :accessor subfield-delimiter :initarg :subfield-delimiter :initform #\^)
+   (test-or-prod :accessor test-or-prod :initarg :test-or-prod :initform #\P)
    (date)
    (time)
    (trailer-code :initform "IEA")
@@ -46,20 +53,28 @@
   )
 (defgeneric print-trailer (object stream)
   )
+(defgeneric child-count (object)
+  )
+(defmethod child-count ((self paired))
+  (length (children self))
+  )
+(defmethod child-count ((self st/se))
+  (+ 2 (length (children self)))
+  )
 (defmethod print-object ((self paired) stream)
-  (format stream "~a~{~a~}~a" (print-header self stream) (pairs self)
+  (format stream "~a~{~a~}~a" (print-header self stream) (children self)
           (print-trailer self stream))
   )
 (defmethod print-header ((self paired) stream)
   )
 (defmethod print-trailer ((self paired) stream)
-  (format stream "~a~c~d~c~a~c" (trailer-code self) f (length (pairs self)) f
+  (format stream "~a~c~d~c~a~c" (trailer-code self) f (child-count self) f
           (transmittal-id self) r)
   )
 (defmethod print-object ((self isa/iea) stream)
   (multiple-value-bind (second minute hour day month year dow dst tz)
       (get-decoded-time)
-    (declare (ignore second dow dst tz))
+    (declare (ignorable second dow dst tz))
     (let (
           (s (slot-value self 'subfield-delimiter))
           (f (slot-value self 'field-delimiter))
@@ -78,8 +93,8 @@
   )
 (defmethod print-header ((self isa/iea) stream)
   (format stream
-          "ISA~c00~c~14@a00~11a~cZZ~c~15a~cZZ~c~15a~c~a~c~a~c~c~c~a~c0~cT~c~c~c"
+          "ISA~c00~c~14@a00~11a~cZZ~c~15a~cZZ~c~15a~c~a~c~a~c~c~c~a~c0~c~c~c~c~c"
           f f f f f f "16489767" f f "EMDEON" f
           (subseq (slot-value self 'date) 2) f (slot-value self 'time) f s f
-          (slot-value self 'transmittal-id) f f f #\< r)
+          (slot-value self 'transmittal-id) f f test-or-prod f #\< r)
   )
