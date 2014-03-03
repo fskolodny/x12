@@ -6,6 +6,38 @@
 (defvar s #\^)
 (defvar r #\~)
 (defvar f #\*)
+(defclass record ()
+  (
+   (record-type :accessor record-type :allocation :class)
+   (fields :accessor fields)
+   )
+  )
+(defmethod initialize-instance ((self record) &rest initargs
+                                &key f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13
+                                  f14 f15)
+  (call-next-method)
+  (let ((field-count (if f15 15 (if f14 14 (if f13 13 (if f12 12 (if f11 11 (if f10 10 (if f9 9 (if f8 8 (if f7 7 (if f6 6 (if f5 5 (if f4 4 (if f3 3 (if f2 2 (if f1 1 (error "No fields specified for record type ~a" (record-type self))))))))))))))))))
+        (al (plist-to-alist initargs))
+        )
+    (format t "~a" al)
+    (setf (fields self)
+          (make-array field-count :element-type '(or string octet null)
+                      :initial-element nil))
+    (iter
+      (:for i :from 1 :to 15)
+      (let ((sym (assoc (ensure-keyword i :format "F~d") al))
+            )
+        (format t "~a ~a~%" i sym)
+        (if sym
+            (setf (aref (fields self) (1- i))
+                  (sb-ext:octets-to-string (cdr sym))))
+        )
+      )
+    )
+  )
+(defclass isa (record)
+  ((record-type :initform "ISA"))
+  )
 (defclass paired ()
   (
    (children :accessor children :initarg :children :initform nil)
@@ -14,6 +46,8 @@
    (header-code :accessor header-code :allocation :class)
    (transmittal-id-position :accessor transmittal-id-position
                             :allocation :class)
+   (header-record :accessor header-record :initarg :header :type 'record)
+   (trailer-record :accessor trailer-record :initarg :trailer :type 'record)
    )
   )
 (defclass st/se (paired)
@@ -97,4 +131,44 @@
           f f f f f f "16489767" f f "EMDEON" f
           (subseq (slot-value self 'date) 2) f (slot-value self 'time) f s f
           (slot-value self 'transmittal-id) f f test-or-prod f #\< r)
+  )
+
+(defun make-isa-record (stream)
+  (declare (type stream stream))
+  (let (
+        (record (make-array 106 :element-type '(unsigned-byte 8)))
+        (cnt)
+        )
+    (setf cnt (read-sequence record stream))
+    (unless (= cnt 106)
+      (error "Cannot read ISA from stream ~a, too short only read ~d bytes"
+             stream cnt))
+    (let (
+          (r (aref record 105))
+          (f (aref record 103))
+          (s (aref record 82))
+          (subsubfield-delimiter (aref record 104))
+          )
+      (unless (and (equalp (subseq record 0 3)
+                           (vector (char-code #\I) (char-code #\S)
+                                   (char-code #\A)))
+                   (= (aref record 3) (aref record 6) (aref record 17)
+                      (aref record 20) (aref record 31) (aref record 34)
+                      (aref record 50) (aref record 53) (aref record 69)
+                      (aref record 76) (aref record 81) (aref record 83)
+                      (aref record 89) (aref record 99) (aref record 101) f))
+        (error "~a record does not match specification for ISA" record))
+      (make-instance 'isa :f1 (subseq record 4 6) :f2 (subseq record 7 17)
+                     :f3 (subseq record 18 20) :f4 (subseq record 21 31)
+                     :f5 (subseq record 32 34) :f6 (subseq record 35 50)
+                     :f7 (subseq record 51 53) :f8 (subseq record 54 69)
+                     :f9 (subseq record 70 76) :f10 (subseq record 77 81)
+                     :f11 (subseq record 82 83) :f12 (subseq record 84 89)
+                     :f13 (subseq record 90 99) :f14 (subseq record 100 101)
+                     :f15 (subseq record 102 103))
+      ;;; while iea not read
+      ;;;   read records in
+      ;;; return isa-iea pair
+      )
+    )
   )
