@@ -3,7 +3,7 @@
 (defpackage #:x12
   (:use #:cl
         #:rutils
-        #:rutilsx
+        #:rutilsx.iter
         )
   (:export #:gs/ge
            #:isa/iea

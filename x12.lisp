@@ -1,22 +1,39 @@
 ;;;; x12.lisp
 
 (in-package #:x12)
+(named-readtables:in-readtable rutils-readtable)
 
 ;;; "X12" goes here. Hacks and glory await!
-(defvar s #\^)
-(defvar r #\~)
-(defvar f #\*)
+(defvar s (char-code #\^))
+(defvar r (char-code #\~))
+(defvar f (char-code #\*))
+(defvar whitespace (coerce #v((char-code #\space) (char-code #\return)
+                      (char-code #\newline) (char-code #\tab)
+                      ) 'list))
 (defclass record ()
   (
-   (record-type :accessor record-type :allocation :class)
+   (record-type :accessor record-type :initarg :type :allocation :class)
    (fields :accessor fields)
+   )
+  )
+(defclass bracket (record)
+  (
+   (parent :accessor parent)
+   )
+  )
+(defclass header (bracket)
+  (
+    )
+  )
+(defclass trailer (bracket)
+  (
    )
   )
 (defmethod initialize-instance ((self record) &rest initargs
                                 &key f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13
-                                  f14 f15)
+                                  f14 f15 f16 f17 f18 f19 f20)
   (call-next-method)
-  (let ((field-count (if f15 15 (if f14 14 (if f13 13 (if f12 12 (if f11 11 (if f10 10 (if f9 9 (if f8 8 (if f7 7 (if f6 6 (if f5 5 (if f4 4 (if f3 3 (if f2 2 (if f1 1 (error "No fields specified for record type ~a" (record-type self))))))))))))))))))
+  (let ((field-count (if f20 20 (if f19 19 (if f18 18 (if f17 17 (if f16 16 (if f15 15 (if f14 14 (if f13 13 (if f12 12 (if f11 11 (if f10 10 (if f9 9 (if f8 8 (if f7 7 (if f6 6 (if f5 5 (if f4 4 (if f3 3 (if f2 2 (if f1 1 (error "No fields specified for record type ~a" (record-type self)))))))))))))))))))))))
         (al (plist-to-alist initargs))
         )
     (format t "~a" al)
@@ -24,10 +41,9 @@
           (make-array field-count :element-type '(or string octet null)
                       :initial-element nil))
     (iter
-      (:for i :from 1 :to 15)
+      (:for i :from 1 :to 30)
       (let ((sym (assoc (ensure-keyword i :format "F~d") al))
             )
-        (format t "~a ~a~%" i sym)
         (if sym
             (setf (aref (fields self) (1- i))
                   (sb-ext:octets-to-string (cdr sym))))
@@ -35,38 +51,49 @@
       )
     )
   )
-(defclass isa (record)
+(defclass isa (header)
   ((record-type :initform "ISA"))
+  )
+(defclass iea (trailer)
+  ((record-type :initform "IEA"))
+  )
+(defclass gs (header)
+  ((record-type :initform "GS"))
+  )
+(defclass ge (trailer)
+  ((record-type :initform "GE"))
+  )
+(defclass st (header)
+  (
+   (record-type :initform "ST")
+   (transmittal-type :allocation :class)
+   )
+  )
+(defclass _270 (st)
+  (
+   (transmittal-type :initform "270")
+   )
   )
 (defclass paired ()
   (
    (children :accessor children :initarg :children :initform nil)
    (transmittal-id :accessor transmittal-id :initform "")
-   (trailer-code :accessor trailer-code :allocation :class)
-   (header-code :accessor header-code :allocation :class)
    (transmittal-id-position :accessor transmittal-id-position
                             :allocation :class)
-   (header-record :accessor header-record :initarg :header :type 'record)
-   (trailer-record :accessor trailer-record :initarg :trailer :type 'record)
+   (header :accessor header :initarg :header :type 'header)
+   (trailer :accessor trailer :initarg :trailer :type 'trailer)
    )
+  )
+(defmethod initialize-instance ((self paired) &key)
+  (setf (parent header) self (parent trailer) self)
   )
 (defclass st/se (paired)
   (
-   (trailer-code :initform "SE")
-   (header-code :initform "ST")
-   (transmittal-type :accessor transmittal-type :allocation :class)
    (transmittal-id-position :initform 2)
-   )
-  )
-(defclass _270 (st/se)
-  (
-   (transmittal-type :initform "270")
    )
   )
 (defclass gs/ge (paired)
   (
-   (trailer-code :initform "GE")
-   (header-code :initform "GS")
    (transmittal-id-position :initform 6)
    )
   )
@@ -78,14 +105,8 @@
    (test-or-prod :accessor test-or-prod :initarg :test-or-prod :initform #\P)
    (date)
    (time)
-   (trailer-code :initform "IEA")
-   (header-code :initform "ISA")
    (transmittal-id-position :initform 13)
    )
-  )
-(defgeneric print-header (object stream)
-  )
-(defgeneric print-trailer (object stream)
   )
 (defgeneric child-count (object)
   )
@@ -96,14 +117,19 @@
   (+ 2 (length (children self)))
   )
 (defmethod print-object ((self paired) stream)
-  (format stream "~a~{~a~}~a" (print-header self stream) (children self)
-          (print-trailer self stream))
+  (with-slots (header children self) self
+    (format stream "~a~{~a~}~a" header children trailer)
+    )
   )
-(defmethod print-header ((self paired) stream)
-  )
-(defmethod print-trailer ((self paired) stream)
-  (format stream "~a~c~d~c~a~c" (trailer-code self) f (child-count self) f
-          (transmittal-id self) r)
+(defmethod print-object ((self trailer) stream)
+  (let ((f (code-char f))
+        (r (code-char r))
+        )
+    (with-slots (record-type transmittal-id) self
+      (format stream "~a~c~d~c~a~c" record-type f (child-count self) f
+              transmittal-id r)
+      )
+    )
   )
 (defmethod print-object ((self isa/iea) stream)
   (multiple-value-bind (second minute hour day month year dow dst tz)
@@ -125,15 +151,126 @@
       )
     )
   )
-(defmethod print-header ((self isa/iea) stream)
-  (format stream
-          "ISA~c00~c~14@a00~11a~cZZ~c~15a~cZZ~c~15a~c~a~c~a~c~c~c~a~c0~c~c~c~c~c"
-          f f f f f f "16489767" f f "EMDEON" f
-          (subseq (slot-value self 'date) 2) f (slot-value self 'time) f s f
-          (slot-value self 'transmittal-id) f f test-or-prod f #\< r)
+(defun coerce-to-char (c) (if (typep c 'character) c (code-char c)))
+(defmethod print-object ((self record) stream)
+   (format stream (fmt "~~a~~{~c~~a~~}~~c"
+                       (coerce-to-char f))
+           (record-type self) (coerce (fields self) 'list) (coerce-to-char r))
+  )
+(defmethod print-object ((self isa) stream)
+  (with-slots (record-type date time test-or-prod) self
+      (format stream
+              "~a~c00~c~14@a00~11a~cZZ~c~15a~cZZ~c~15a~c~a~c~a~c~c~c~a~c0~c~c~c~c~c"
+              record-type f f f f f f "16489767" f f "EMDEON" f
+              (subseq date 2) f time f s f transmittal-id f f test-or-prod f
+              #\< r)
+      )
+    )
+
+
+(defun read-5010-record (stream &optional a b)
+  (declare (ignorable a b))
+  (let* ((c (skip-whitespace stream))
+         (buf (funcall #'vector
+                       (iter
+                         (:for i :from 0 :to 9999)
+                         (:until (= c r))
+                         (:collect c)
+                         (setf c (read-byte stream nil r))
+                         )
+                       ))
+         (seq (split-sequence f buf))
+         (class (find-class (intern (sb-ext:octets-to-string (elt seq 0))
+                                    :x12)))
+         (obj (apply #'make-instance class
+                     (zip '(:f0 :f1 :f2 :f3 :f4 :f5 :f6 :f7 :f8 :f9 :f10 :f11
+                            :f12 :f13 :f14 :f15 :f16 :f17 :f18 :f19 :f20 :f21
+                            :f22)
+                          seq)))
+         )
+    obj
+    )
   )
 
-(defun make-isa-record (stream)
+(defun read-gs/ge-pair (temp-record stream)
+  (let ((ge-record nil)
+        )
+    (iter
+      (finally
+       (return-from read-gs/ge-pair
+           (make-instance 'gs/ge :header gs-record :trailer ge-record
+                          :children children)))
+      (setf temp-record (read-5010-record stream))
+      (:while (not ge-record))
+      (case (class-of temp-record)
+        ((find-class 'st)
+         (:collect (read-st/se-pair temp-record stream) :into children))
+        ((find-class 'ge)
+         (setf ge-record temp-record))
+        )
+      )
+    )
+  )
+
+(defun skip-whitespace (stream)
+  (let ((c)
+        )
+    (iter
+      (:for i :from 0 :to 999999)
+      (setf c (read-byte stream nil nil))
+      (if (member c whitespace :test #'=)
+          (next-iteration)
+          (return-from skip-whitespace c))
+      )
+    )
+  )
+
+(defun read-isa-record (stream)
+  (let ((c (skip-whitespace stream))
+        (record (make-array 106 :element-type '(unsigned-byte 8)))
+        (cnt)
+        )
+    (setf (aref record 0) c
+          cnt (read-sequence record stream :start 1))
+    (unless (= cnt 106)
+      (format t "Only read ~d bytes from stream~&" (1- cnt))
+      (error "Cannot read ISA from stream ~a, too short only read ~d bytes"
+             stream cnt)
+      )
+    (let* (
+           (r (aref record 105))
+           (f (aref record 103))
+           (s (aref record 82))
+           (subsubfield-delimiter (aref record 104))
+           (isa-record)
+           (positions (coerce (iter
+                                (:for i :from 0 :to 105)
+                                (if (= (aref record i) f)
+                                    (:collect i)))
+                              'vector))
+          )
+      (unless (and (equalp (subseq record 0 3)
+                           #v((char-code #\I) (char-code #\S) (char-code #\A)))
+                   (equalp #v(3 6 17 20 31 34 50 53 69 76 81 83 89 99 101 103)
+                           positions
+                           )
+                   )
+        (format t "~a" positions)
+        (error "~a record does not match specification for ISA" record))
+      )
+    (make-instance 'isa :f1 (subseq record 4 6) :f2 (subseq record 7 17)
+                   :f3 (subseq record 18 20) :f4 (subseq record 21 31)
+                   :f5 (subseq record 32 34) :f6 (subseq record 35 50)
+                   :f7 (subseq record 51 53) :f8 (subseq record 54 69)
+                   :f9 (subseq record 70 76) :f10 (subseq record 77 81)
+                   :f11 (subseq record 82 83) :f12 (subseq record 84 89)
+                   :f13 (subseq record 90 99) :f14 (subseq record 100 101)
+                   :f15 (subseq record 102 103) :f16 (subseq record 104 105)
+                   )
+    )
+  )
+
+(defun read-isa/iea-pair (record stream)
   (declare (type stream stream))
   (let (
         (record (make-array 106 :element-type '(unsigned-byte 8)))
@@ -148,27 +285,41 @@
           (f (aref record 103))
           (s (aref record 82))
           (subsubfield-delimiter (aref record 104))
+          (isa-record)
           )
       (unless (and (equalp (subseq record 0 3)
-                           (vector (char-code #\I) (char-code #\S)
-                                   (char-code #\A)))
-                   (= (aref record 3) (aref record 6) (aref record 17)
-                      (aref record 20) (aref record 31) (aref record 34)
-                      (aref record 50) (aref record 53) (aref record 69)
-                      (aref record 76) (aref record 81) (aref record 83)
-                      (aref record 89) (aref record 99) (aref record 101) f))
+                           #v((char-code #\I) (char-code #\S) (char-code #\A)))
+                   (equalp #v(3 6 17 20 31 34 50 53 69 76 81 83 89 99 101 103)
+                           (coerce (iter
+                                    (:for i :from 0 :to 105)
+                                    (if (= (aref record i) f)
+                                        (:collect i)))
+                                   'vector)
+                           )
+                   )
         (error "~a record does not match specification for ISA" record))
-      (make-instance 'isa :f1 (subseq record 4 6) :f2 (subseq record 7 17)
-                     :f3 (subseq record 18 20) :f4 (subseq record 21 31)
-                     :f5 (subseq record 32 34) :f6 (subseq record 35 50)
-                     :f7 (subseq record 51 53) :f8 (subseq record 54 69)
-                     :f9 (subseq record 70 76) :f10 (subseq record 77 81)
-                     :f11 (subseq record 82 83) :f12 (subseq record 84 89)
-                     :f13 (subseq record 90 99) :f14 (subseq record 100 101)
-                     :f15 (subseq record 102 103))
-      ;;; while iea not read
-      ;;;   read records in
-      ;;; return isa-iea pair
+      (setf isa-record 
+            (make-instance 'isa :f1 (subseq record 4 6)
+                           :f2 (subseq record 7 17)
+                           :f3 (subseq record 18 20) :f4 (subseq record 21 31)
+                           :f5 (subseq record 32 34) :f6 (subseq record 35 50)
+                           :f7 (subseq record 51 53) :f8 (subseq record 54 69)
+                           :f9 (subseq record 70 76) :f10 (subseq record 77 81)
+                           :f11 (subseq record 82 83)
+                           :f12 (subseq record 84 89)
+                           :f13 (subseq record 90 99)
+                           :f14 (subseq record 100 101)
+                           :f15 (subseq record 102 103)
+                           :f16 (subseq record 104 105)))
+      (make-instance 'isa/iea :header isa-record :trailer iea-record
+                     :children
+                     (loop as temp = (read-5010-record stream)
+                        as class = (class-of temp)
+                        until (eql (find-class 'iea) class)
+                        collect temp
+                          )
+                     :record-delimiter r
+                     :field-delimiter f :subfield-delimiter s)
       )
     )
   )
