@@ -2,6 +2,7 @@
 
 (asdf:defsystem #:x12
   :depends-on (
+               #:flexi-streams
                #:rutils
                #:rutilsx
                )

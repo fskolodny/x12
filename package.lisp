@@ -1,9 +1,11 @@
 ;;;; package.lisp
 
 (defpackage #:x12
-  (:use #:cl
+  (:use
+        #:cl
+        #:flexi-streams
         #:rutils
-        #:rutilsx.iter
+        #:rutilsx
         )
   (:export #:gs/ge
            #:isa/iea
