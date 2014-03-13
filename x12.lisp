@@ -37,6 +37,12 @@
    (control-id :accessor control-id :initarg :control-id)
    )
   )
+(defmethod initialize-instance ((self trailer) &key &allow-other-keys)
+  (call-next-method)
+  (unless (slot-boundp self 'count)
+    (setf (record-count self) (aref (fields self) 0)))
+  (unless (slot-boundp self 'control-id)
+    (setf (control-id self) (aref (fields self) 1))))
 (defmethod initialize-instance ((self record) &rest initargs
                                 &key &allow-other-keys)
   (call-next-method)
@@ -76,14 +82,77 @@
   )
 (defclass bht (record)
   (
+   (record-type :initform "BHT")
    )
   )
 (defclass hl (record)
   (
+   (record-type :initform "HL")
    )
   )
 (defclass nm1 (record)
   (
+   (record-type :initform "NM1")
+   )
+  )
+(defclass per (record)
+  (
+   (record-type :initform "PER")
+   )
+  )
+(defclass n3 (record)
+  (
+   (record-type :initform "N3")
+   )
+  )
+(defclass n4 (record)
+  (
+   (record-type :initform "N4")
+   )
+  )
+(defclass trn (record)
+  (
+   (record-type :initform "TRN")
+   )
+  )
+(defclass dmg (record)
+  (
+   (record-type :initform "DMG")
+   )
+  )
+(defclass dtp (record)
+  (
+   (record-type :initform "DTP")
+   )
+  )
+(defclass eb (record)
+  (
+   (record-type :initform "EB")
+   )
+  )
+(defclass hsd (record)
+  (
+   (record-type :initform "HSD")
+   )
+  )
+(defclass msg (record)
+  (
+   (record-type :initform "MSG")
+   )
+  )
+(defclass ref (record)
+  (
+   (record-type :initform "REF")
+   )
+  )
+(defclass le (record)
+  (
+   (record-type :initform "LE")
+   )
+  )
+(defclass ls (record)
+  (
+   (record-type :initform "LS")
    )
   )
 (defclass isa (header)
@@ -128,11 +197,13 @@
    (file-standard :accessor file-standard)
    )
   )
-(defmethod initialize-instance ((self st) &key)
-  (call-next-method)
-  (setf (transmittal-type self) (aref (fields self) 0)
-        (file-standard self) (aref (fields self) 2)
-        )
+(defclass se (trailer)
+  ((record-type :initform "SE"))
+  )
+(defmethod initialize-instance ((self st) &key f1 f3)
+  (with-slots (transmittal-type file-standard) self
+    (setf transmittal-type f1 file-standard f3)
+    )
   )
 (defclass paired ()
   (
@@ -189,9 +260,9 @@
   (let ((f (coerce-to-char f))
         (r (coerce-to-char r))
         )
-    (with-slots (record-type transmittal-id) self
-      (format stream "~a~c~d~c~a~c" record-type f (child-count self) f
-              transmittal-id r)
+    (with-slots (record-type control-id parent) self
+      (format stream "~a~c~d~c~a~c" record-type f (child-count parent) f
+              control-id r)
       )
     )
   )
@@ -252,13 +323,14 @@
                         )
                       'vector))
          (seq (split-sequence f buf))
-         (class (find-class (intern (octets-to-string (elt seq 0))
-                                    :x12)))
+         (class-name (octets-to-string (elt seq 0)))
+         (class (or (find-class (intern class-name :x12))
+                    (error "Class ~a not found." class-name)))
          (obj (apply #'make-instance class
                      (flatten (zip (iter
-                                     (:for i :from 0 :to (length seq))
-                                     (:collect (ensure-keyword i :format "F~d"))
-                                     )
+                                    (:for i :from 0 :to (length seq))
+                                    (:collect (ensure-keyword i :format "F~d"))
+                                    )
                                    seq
                                    )
                               )
@@ -268,24 +340,44 @@
     obj
     )
   )
-
+(defun read-st/se-pair (temp-record stream)
+  (declare (type stream stream))
+  (let ((se-record nil)
+        (st-record temp-record)
+        )
+    (iter
+      (setf temp-record (read-5010-record stream))
+      (:while (not se-record))
+      (if (typep temp-record 'se)
+          (progn
+            (setf se-record temp-record)
+            (return-from read-st/se-pair
+                 (make-instance 'st/se :header st-record :trailer se-record
+                                :children children))
+            )
+          (:collect temp-record :into children))
+      )
+    )
+  )
 (defun read-gs/ge-pair (temp-record stream)
   (declare (type stream stream))
   (let ((ge-record nil)
+        (gs-record temp-record)
         )
     (iter
-      (finally
-       (return-from read-gs/ge-pair
-           (make-instance 'gs/ge :header gs-record :trailer ge-record
-                          :children children)))
       (setf temp-record (read-5010-record stream))
       (:while (not ge-record))
-      (case (class-of temp-record)
-        ((find-class 'st)
-         (:collect (read-st/se-pair temp-record stream) :into children))
-        ((find-class 'ge)
-         (setf ge-record temp-record))
-        )
+      (if (typep temp-record 'st)
+          (:collect (read-st/se-pair temp-record stream) :into children)
+          (if (typep temp-record 'ge)
+              (progn
+                (setf ge-record temp-record)
+                (return-from read-gs/ge-pair
+                  (make-instance 'gs/ge :header gs-record :trailer ge-record
+                                 :children children))
+                )
+              (error "Invalid class ~a found." (class-of temp-record)))
+          )
       )
     )
   )
@@ -296,7 +388,7 @@
         )
     (iter
       (:for i :from 0 :to 999999)
-      (setf c (read-byte stream))
+      (setf c (read-byte stream nil r))
       (if (not (member c whitespace :test #'=))
           (return-from skip-whitespace c))
       )
@@ -369,15 +461,18 @@
                          :usage-indicator (subseq record 102 103)))
     (setf children
           (iter
-            (:for i :from 0 :to 99999999)
             (setf temp-record (read-5010-record stream))
-            (case (class-of temp-record)
-              ((find-class 'gt)
-               (:collect (read-gt/ge-pair temp-record stream)))
-              ((find-class 'iea)
-               (setf iea-record temp-record))
-              )
-            (:until iea-record)
+            (:while (not iea-record))
+            (if (typep temp-record 'gs)
+                (:collect (read-gs/ge-pair temp-record stream) :into kids)
+                (if (typep temp-record 'iea)
+                    (progn
+                      (setf iea-record temp-record)
+                      (return kids)
+                      )
+                    (error "Bad class ~a." (class-of temp-record))
+                    )
+                )
             )
           )
     (make-instance 'isa/iea :header isa-record :trailer iea-record
