@@ -65,7 +65,6 @@
                         )
            )
          )
-    (format t "~a~%" al)
     (setf (fields self)
           (make-array field-count :element-type '(or string octet null)
                       :initial-element nil))
@@ -204,6 +203,7 @@
   (with-slots (transmittal-type file-standard) self
     (setf transmittal-type f1 file-standard f3)
     )
+  (call-next-method)
   )
 (defclass paired ()
   (
@@ -345,18 +345,20 @@
   (let ((se-record nil)
         (st-record temp-record)
         )
-    (iter
-      (setf temp-record (read-5010-record stream))
-      (:while (not se-record))
-      (if (typep temp-record 'se)
-          (progn
-            (setf se-record temp-record)
-            (return-from read-st/se-pair
-                 (make-instance 'st/se :header st-record :trailer se-record
-                                :children children))
-            )
-          (:collect temp-record :into children))
-      )
+    (make-instance 'st/se :header st-record
+                   :children
+                   (iter
+                     (setf temp-record (read-5010-record stream))
+                     (:while (not se-record))
+                     (if (typep temp-record 'se)
+                         (progn
+                           (setf se-record temp-record)
+                           (return children)
+                           )
+                         (:collect temp-record :into children))
+                     )
+                   :trailer se-record
+                   )
     )
   )
 (defun read-gs/ge-pair (temp-record stream)
@@ -364,21 +366,25 @@
   (let ((ge-record nil)
         (gs-record temp-record)
         )
-    (iter
-      (setf temp-record (read-5010-record stream))
-      (:while (not ge-record))
-      (if (typep temp-record 'st)
-          (:collect (read-st/se-pair temp-record stream) :into children)
-          (if (typep temp-record 'ge)
-              (progn
-                (setf ge-record temp-record)
-                (return-from read-gs/ge-pair
-                  (make-instance 'gs/ge :header gs-record :trailer ge-record
-                                 :children children))
-                )
-              (error "Invalid class ~a found." (class-of temp-record)))
-          )
-      )
+    (make-instance 'gs/ge :header gs-record
+                   :children
+                   (iter
+                     (setf temp-record (read-5010-record stream))
+                     (:while (not ge-record))
+                     (if (typep temp-record 'st)
+                         (:collect (read-st/se-pair temp-record stream)
+                           :into children)
+                         (if (typep temp-record 'ge)
+                             (progn
+                               (setf ge-record temp-record)
+                               (return children)
+                               )
+                             (error "Invalid class ~a found."
+                                    (class-of temp-record)))
+                         )
+                     )
+                   :trailer ge-record
+                   )
     )
   )
 
@@ -426,7 +432,6 @@
          (isa-record)
          (iea-record nil)
          (temp-record)
-         (children)
          )
     (unless (and (equalp (subseq record 0 3)
                          #v((char-code #\I) (char-code #\S) (char-code #\A)))
@@ -459,26 +464,26 @@
                          :control-id (subseq record 90 99)
                          :ack-needed (subseq record 100 101)
                          :usage-indicator (subseq record 102 103)))
-    (setf children
-          (iter
-            (setf temp-record (read-5010-record stream))
-            (:while (not iea-record))
-            (if (typep temp-record 'gs)
-                (:collect (read-gs/ge-pair temp-record stream) :into kids)
-                (if (typep temp-record 'iea)
-                    (progn
-                      (setf iea-record temp-record)
-                      (return kids)
-                      )
-                    (error "Bad class ~a." (class-of temp-record))
+    (make-instance 'isa/iea :header isa-record :record-delimiter r
+                   :field-delimiter f :subfield-delimiter s
+                   :children
+                   (iter
+                    (setf temp-record (read-5010-record stream))
+                    (:while (not iea-record))
+                    (if (typep temp-record 'gs)
+                        (:collect (read-gs/ge-pair temp-record stream)
+                                  :into kids)
+                        (if (typep temp-record 'iea)
+                            (progn
+                              (setf iea-record temp-record)
+                              (return kids)
+                              )
+                            (error "Bad class ~a." (class-of temp-record))
+                            )
+                        )
                     )
-                )
-            )
-          )
-    (make-instance 'isa/iea :header isa-record :trailer iea-record
-                   :children children
-                   :record-delimiter r
-                   :field-delimiter f :subfield-delimiter s)
+                   :trailer iea-record
+                   )
     )
   )
 
