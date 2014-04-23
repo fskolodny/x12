@@ -155,7 +155,8 @@
    )
   )
 (defclass isa (header)
-  ((record-type :initform "ISA")
+  (
+   (record-type :initform "ISA")
    (authorization-info :accessor authorization-info :initarg :authorization-info)
    (security-info :accessor security-info :initarg :security-info)
    (interchange-sender :accessor interchange-sender :initarg :interchange-sender)
@@ -180,14 +181,17 @@
   (call-next-method)
   )
 (defclass iea (trailer)
-  ((record-type :initform "IEA"))
+  (
+   (record-type :initform "IEA"))
   )
 (defclass gs (header)
-  ((record-type :initform "GS")
+  (
+   (record-type :initform "GS")
    )
   )
 (defclass ge (trailer)
-  ((record-type :initform "GE"))
+  (
+   (record-type :initform "GE"))
   )
 (defclass st (header)
   (
@@ -197,7 +201,8 @@
    )
   )
 (defclass se (trailer)
-  ((record-type :initform "SE"))
+  (
+   (record-type :initform "SE"))
   )
 (defmethod initialize-instance ((self st) &key f1 f3)
   (with-slots (transmittal-type file-standard) self
@@ -249,7 +254,7 @@
   (length (children self))
   )
 (defmethod child-count ((self st/se))
-  (+ 2 (length (children self)))
+  (+ 2 (call-next-method))
   )
 (defmethod print-object ((self paired) stream)
   (with-slots (header children trailer) self
@@ -404,7 +409,7 @@
 (defun read-isa-record (stream)
   (declare (type stream stream))
   (let ((c (skip-whitespace stream))
-        (record (make-array 106 :element-type '(unsigned-byte 8)))
+        (record (make-array 106 :element-type 'octet))
         (cnt)
         )
     (setf (aref record 0) c
