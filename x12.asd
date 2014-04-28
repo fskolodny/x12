@@ -11,5 +11,9 @@
   :author "Fila Kolodny <fskolodny@gmail.com>"
   :license "BSD"
   :components ((:file "package")
+               (:file "variables")
+               (:file "classes")
+               (:file "methods")
+               (:file "functions")
                (:file "x12")))
 
